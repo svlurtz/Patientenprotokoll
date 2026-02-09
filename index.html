@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NIDA Pad Patientenprotokoll</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #2c2c2c;
+            color: #fff;
+            overflow-x: hidden;
+            display: flex;
+            height: 100vh;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+        }
+
+        .sidebar {
+            background-color: #1a1a1a;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            border-right: 2px solid #444;
+            width: 250px;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+        }
+
+        .sidebar button {
+            background-color: #3a3a3a;
+            color: #fff;
+            border: none;
+            padding: 12px;
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: left;
+            font-size: 16px;
+            width: 100%;
+        }
+
+        .sidebar button:hover {
+            background-color: #555;
+        }
+
+        .content {
+            margin-left: 250px;
+            padding: 20px;
+            gap: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .section {
+            display: none;
+            background-color: #3a3a3a;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+        }
+
+        .subsection {
+            background-color: #2c2c2c;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            background-color: #1a1a1a;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 12px;
+            margin-top: 5px;
+            font-size: 14px;
+        }
+    </style>
+    <script>
+
+    function setCurrentTime() {
+    const currentTimeField = document.getElementById("einstellzeit");
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+
+    currentTimeField.value = `${hours}:${minutes}`;
+}
+
+    function generatePatientID() {
+    const vorname = document.getElementById("vorname").value.trim();
+    const nachname = document.getElementById("nachname").value.trim();
+    const geburtsdatum = document.querySelector("input[type='date']").value;
+
+    const patientenIDField = document.getElementById("patientenid");
+
+    if (vorname && nachname && geburtsdatum) {
+        const initialen = `${vorname[0] || ""}${nachname[0] || ""}`.toUpperCase();
+        const datumTeil = geburtsdatum.replace(/-/g, ""); // Entfernt Bindestriche aus dem Datum
+        patientenIDField.value = `${initialen}${datumTeil}`;
+    } else {
+        patientenIDField.value = ""; // Leert das Feld, falls nicht alle Daten vorhanden sind
+    }
+}
+
+    function generatePatientName() {
+    const vorname = document.getElementById("vorname").value.trim();
+    const nachname = document.getElementById("nachname").value.trim();
+    const patientennameField = document.getElementById("patientenname");
+
+    if (vorname || nachname) {
+        patientennameField.value = `${vorname} ${nachname}`.trim();
+    } else {
+        patientennameField.value = "";
+    }
+}
+
+        function showPage(pageId) {
+            const pages = document.querySelectorAll('.section');
+            pages.forEach(page => page.style.display = 'none');
+            document.getElementById(pageId).style.display = 'block';
+        }
+
+        function stylePdfButton() {
+            const button = document.querySelector('.generate-pdf-button');
+            button.style.backgroundColor = '#00aaff';
+            button.style.color = '#fff';
+            button.style.border = 'none';
+            button.style.padding = '12px';
+            button.style.borderRadius = '5px';
+            button.style.cursor = 'pointer';
+            button.style.fontSize = '16px';
+            button.style.fontWeight = 'bold';
+            button.style.textAlign = 'center';
+            button.onmouseover = function() {
+                button.style.backgroundColor = '#0088cc';
+            };
+            button.onmouseout = function() {
+                button.style.backgroundColor = '#00aaff';
+            };
+        }
+
+        async function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const sections = ["rett-daten", "anamnese", "erstbefund", "verdachtsdiagnose", "verlauf", "massnahmen", "medikamente", "uebergabe", "ergebnis", "abschluss"];
+            const sectionTitles = {
+                "rett-daten": "Rettungsdaten",
+                "anamnese": "Anamnese",
+                "erstbefund": "Erstbefund",
+                "verdachtsdiagnose": "Verdachtsdiagnose",
+                "verlauf": "Verlauf",
+                "massnahmen": "Maßnahmen",
+                "medikamente": "Medikamente",
+                "uebergabe": "Übergabe",
+                "ergebnis": "Ergebnis",
+                "abschluss": "Abschluss"
+            };
+            const patientName = document.getElementById("patientenname").value || "Unbekannt";
+            const einsatznummer = document.querySelector("input[placeholder='Einsatznummer']").value || "0000";
+            const today = new Date();
+            const date = today.toLocaleDateString();
+            const time = today.toLocaleTimeString();
+            const id = `${date.replace(/\./g, "")}_${time.replace(/:/g, "")}_${einsatznummer}`;
+
+            let y = 20;
+
+            // Header
+            doc.setFontSize(20);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(40, 40, 40);
+            doc.text("Patientenprotokoll", 105, y, { align: "center" });
+            y += 10;
+            doc.setDrawColor(200, 200, 200);
+            doc.line(10, y, 200, y); // Separator line
+            y += 10;
+
+            sections.forEach(sectionId => {
+                const section = document.getElementById(sectionId);
+                if (section) {
+                    const inputs = section.querySelectorAll("input, textarea, select");
+                    let sectionContent = "";
+
+                    inputs.forEach(input => {
+                        let value;
+                        let label = "";
+
+                        if (input.type === "checkbox") {
+                            const parentLabel = input.closest("label");
+                            value = input.checked && parentLabel ? parentLabel.textContent.trim() : "";
+                        } else {
+                            value = input.value;
+                            const inputLabel = input.previousElementSibling;
+                            if (inputLabel && inputLabel.tagName.toLowerCase() === "label") {
+                                label = inputLabel.textContent.trim();
+                            }
+                        }
+
+                        if (value && value.trim() !== "" && value !== "keine Angaben") {
+                            sectionContent += label ? `${label}: ${value}\n` : `${value}\n`;
+                        }
+                    });
+
+                    if (sectionContent) {
+                        doc.setFontSize(16);
+                        doc.setFont("helvetica", "bold");
+                        doc.setTextColor(60, 60, 60);
+                        doc.text(sectionTitles[sectionId], 10, y);
+                        y += 10;
+
+                        doc.setFontSize(12);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(80, 80, 80);
+                        const lines = doc.splitTextToSize(sectionContent, 180);
+                        doc.text(lines, 10, y);
+                        y += lines.length * 7;
+
+                        if (y > 270) {
+                            doc.addPage();
+                            y = 20;
+                        }
+                    }
+                }
+            });
+
+            // Footer
+            const totalPages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= totalPages; i++) {
+                doc.setPage(i);
+                doc.setFontSize(10);
+                doc.setTextColor(150, 150, 150);
+                doc.text(`ID: ${id}`, 10, 290);
+                doc.text(`Patient: ${patientName}`, 70, 290);
+                doc.text(`Erstellt am: ${date} ${time}`, 140, 290);
+            }
+
+            const fileName = `Patientenprotokoll_${date.replace(/\./g, "")}_${time.replace(/:/g, "")}_${einsatznummer}.pdf`;
+            doc.save(fileName);
+        }
+
+        document.addEventListener("DOMContentLoaded", stylePdfButton);
+    </script>
+</head>
+<body onload="setCurrentTime();">
+    <div class="container">
+        <div class="sidebar">
+            <button onclick="showPage('rett-daten')">Rett. Daten</button>
+            <button onclick="showPage('anamnese')">Anamnese</button>
+            <button onclick="showPage('erstbefund')">Erstbefund</button>
+            <button onclick="showPage('verdachtsdiagnose')">Verdachtsdiagnose</button>
+            <button onclick="showPage('verlauf')">Verlauf</button>
+            <button onclick="showPage('massnahmen')">Maßnahmen</button>
+            <button onclick="showPage('medikamente')">Medikamente</button>
+            <button onclick="showPage('uebergabe')">Übergabe</button>
+            <button onclick="showPage('ergebnis')">Ergebnis</button>
+            <button onclick="showPage('abschluss')">Abschluss</button>
+        </div>
+        <div class="content">
+            <!-- Header -->
+            <div class="header">
+                <div class="title"><h3>Patientendaten</h3></div>
+                <div class="info">
+                    <div>
+                        <label for="patientenname">Patientenname:</label>
+                        <input type="text" id="patientenname" placeholder="Patientenname" readonly>
+                    </div>
+                    <div>
+                        <label for="patientenid">Patienten-ID:</label>
+                        <input type="text" id="patientenid" placeholder="Patienten-ID">
+                        <label for="einstellzeit">Einstellzeit:</label>
+                        <input type="time" id="einstellzeit">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seiten mit Eingabefeldern -->
+
+            <!-- Rett. Daten -->
+            <div id="rett-daten" class="section" style="display: block;">
+                <div class="subsection">
+                    <h3>Einsatzdaten</h3>
+                    <label>Einsatznummer:</label>
+                    <input type="text" placeholder="Einsatznummer">
+                    <label>Ort:</label>
+                    <input type="text" placeholder="Ort">
+                    <label>Versorgungsart:</label>
+                    <input type="text" placeholder="Versorgungsart">
+                </div>
+                <div class="subsection">
+                    <h3>Patientendaten</h3>
+                    <label>Vorname:</label>
+		    <input type="text" id="vorname" placeholder="Vorname" oninput="generatePatientID(); generatePatientName();">
+		    <label>Nachname:</label>
+		    <input type="text" id="nachname" placeholder="Nachname" oninput="generatePatientID(); generatePatientName();">
+		    <label>Geburtsdatum:</label>
+		    <input type="date" onchange="generatePatientID();">
+                    <label>Geschlecht:</label>
+                    <select>
+                        <option>Männlich</option>
+                        <option>Weiblich</option>
+                        <option>Divers</option>
+                    </select>
+                    <label>Adresse:</label>
+                    <input type="text" placeholder="Adresse">
+                </div>
+                <div class="subsection">
+                    <h3>Zeiten</h3>
+                    <label>Alarm:</label>
+                    <input type="time">
+		    <label>S3:</label>
+                    <input type="time">
+                    <label>S4:</label>
+                    <input type="time">
+		    <label>S4 RD:</label>
+                    <input type="time">
+                    <label>Ende:</label>
+                    <input type="time">
+                </div>
+                <div class="subsection">
+                    <h3>Transportziel</h3>
+                    <label>Ziel Einrichtung:</label>
+                    <input type="text" placeholder="Ziel Einrichtung">
+                    <label>Ziel Adresse:</label>
+                    <input type="text" placeholder="Ziel Adresse">
+                </div>
+            </div>
+
+            <!-- Anamnese -->
+            <div id="anamnese" class="section">
+                <div class="subsection">
+                    <h3>Anamnese</h3>
+                    <label>Vorherige Beschwerden:</label>
+                    <textarea placeholder="Beschwerden"></textarea>
+                    <label>Vorerkrankungen:</label>
+                    <textarea placeholder="Vorerkrankungen"></textarea>
+                </div>
+            </div>
+
+            <!-- Erstbefund -->
+<div id="erstbefund" class="section">
+    <div class="subsection">
+        <h3>Erstbefund</h3>
+        <label for="puls">Puls (bpm):</label>
+        <input type="text" id="puls" placeholder="Puls">
+        
+        <label for="blutdruck">Blutdruck (mmHg):</label>
+        <input type="text" id="blutdruck" placeholder="Blutdruck">
+        
+        <label for="atemfrequenz">Atemfrequenz (pro Minute):</label>
+        <input type="text" id="atemfrequenz" placeholder="Atemfrequenz">
+        
+        <label for="temperatur">Körpertemperatur (°C):</label>
+        <input type="text" id="temperatur" placeholder="Körpertemperatur">
+        
+        <label for="spo2">SpO2 (%):</label>
+        <input type="text" id="spo2" placeholder="Sauerstoffsättigung">
+        
+        <label for="bzs">Blutzucker (mg/dL):</label>
+        <input type="text" id="bzs" placeholder="Blutzucker">
+        
+        <label for="bewusstsein">Bewusstseinszustand:</label>
+        <select id="bewusstsein">
+	    <option value="keine Angaben">keine Angaben</option>
+            <option value="wach">Wach</option>
+            <option value="somnolent">Somnolent</option>
+            <option value="komatös">Komatös</option>
+        </select>
+        
+        <label for="schmerzskala">Schmerzskala (0-10):</label>
+        <input type="text" id="schmerzskala" placeholder="Schmerzskala">
+        
+        <!-- Erweiterung: Atmung -->
+        <label for="atmung">Atmung:</label>
+        <select id="atmung">
+	    <option value="keine Angaben">keine Angaben</option>
+            <option value="spontan-frei">Spontan / Frei</option>
+            <option value="atemnot">Atemnot</option>
+            <option value="hyperventilation">Hyperventilation</option>
+            <option value="atemstillstand">Atemstillstand</option>
+        </select>
+        
+        <!-- Erweiterung: EKG -->
+        <label for="ekg">EKG:</label>
+        <select id="ekg">
+	    <option value="keine Angaben">keine Angaben</option>
+            <option value="sinusrhythmus">Sinusrhythmus</option>
+            <option value="rhythmusstörung">Rhythmusstörung</option>
+            <option value="kammerflimmern">Kammerflimmern</option>
+            <option value="asystolie">Asystolie</option>
+
+        </select>
+
+        <!-- Erweiterung: Kreislauf -->
+        <label for="kreislauf">Kreislauf:</label>
+        <select id="kreislauf">
+	    <option value="keine Angaben">keine Angaben</option>
+            <option value="schock">Schock</option>
+            <option value="kreislaufstillstand">Kreislaufstillstand</option>
+            <option value="puls-regulaer">Puls regelmäßig</option>
+            <option value="puls-unregelmaessig">Puls unregelmäßig</option>
+        </select>
+
+        <!-- Erweiterung: Pupillenfunktion -->
+        <h4>Pupillenfunktion:</h4>
+        
+        <label for="pupillen-linke">Linke Pupille (Größe):</label>
+        <select id="pupillen-linke">
+            <option value="keine Angaben">keine Angaben</option>
+            <option value="eng">Eng</option>
+            <option value="mittel">Mittel</option>
+            <option value="weit">Weit</option>
+        </select>
+
+        <label for="pupillen-rechte">Rechte Pupille (Größe):</label>
+        <select id="pupillen-rechte">
+	    <option value="keine Angaben">keine Angaben</option>
+            <option value="eng">Eng</option>
+            <option value="mittel">Mittel</option>
+            <option value="weit">Weit</option>
+        </select>
+        
+        <label for="lichtreaktion-linke">Lichtreaktion Linke Pupille:</label>
+        <select id="lichtreaktion-linke">
+	    <option value="keine Angaben">keine Angaben</option>
+            <option value="normal">Normal</option>
+            <option value="entrundet">Entrundet</option>
+        </select>
+        
+        <label for="lichtreaktion-rechte">Lichtreaktion Rechte Pupille:</label>
+        <select id="lichtreaktion-rechte">
+            <option value="keine Angaben">keine Angaben</option>
+            <option value="normal">Normal</option>
+            <option value="entrundet">Entrundet</option>
+        </select>
+    </div>
+</div>
+
+ <!-- Verdachtsdiagnose -->
+            <div id="verdachtsdiagnose" class="section">
+                <div class="subsection">
+                    <h3>Verdachtsdiagnose</h3>
+                    <label>Verdachtsdiagnose:</label>
+                    <textarea placeholder="Verdachtsdiagnose eingeben"></textarea>
+                </div>
+            </div>
+
+            <!-- Verlauf -->
+            <div id="verlauf" class="section">
+                <div class="subsection">
+                    <h3>Verlauf</h3>
+                    <label>Verlauf der Behandlung:</label>
+                    <textarea placeholder="Verlauf der Behandlung"></textarea>
+                    <label>Besondere Vorkommnisse:</label>
+                    <textarea placeholder="Besondere Vorkommnisse"></textarea>
+                </div>
+            </div>
+            
+<div id="massnahmen" class="section">
+    <div class="subsection">
+        <h3>Maßnahmen</h3>
+        <div style="display: flex; justify-content: space-between; gap: 20px;">
+
+            <!-- Spalte 1 -->
+            <div style="flex: 1; padding: 10px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start;"> 
+                           
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Oberkörperhochlage" style="margin-right: 1em;">
+                        <span>Oberkörperhochlage</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Flachlagerung" style="margin-right: 1em;">
+                        <span>Flachlagerung</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Schocklagerung" style="margin-right: 1em;">
+                        <span>Schocklagerung</span></label>
+   	           </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Stabile_Seitenlage" style="margin-right: 1em;">
+                        <span>Stabile_Seitenlage</span></label>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Vakuummatratze" style="margin-right: 1em;">
+                        <span>Vakuummatratze</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Spalte 2 -->
+            <div style="flex: 1; padding: 10px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="HWS_Stützragen" style="margin-right: 1em;">
+                        <span>HWS_Stützkragen</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Medikamente" style="margin-right: 1em;">
+                        <span>Medikamente</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Extremitätenschienung" style="margin-right: 1em;">
+                        <span>Extremitätenschienung</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Wundversorgung" style="margin-right: 1em;">
+                        <span>Wundversorgung</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="EKG_Monitoring" style="margin-right: 1em;">
+                        <span>EKG_Monitoring</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Spalte 3 -->
+            <div style="flex: 1; padding: 10px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Venöser_Zugang" style="margin-right: 1em;">
+                        <span>Venöser_Zugang</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Infusion" style="margin-right: 1em;">
+                        <span>Infusion</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Atemwege_freimachen" style="margin-right: 1em;">
+                        <span>Atemwege_freimachen</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Notkompetenzmaßnahmen" style="margin-right: 1em;">
+                        <span>Notkompetenzmaßnahmen</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Sauerstoffgabe" style="margin-right: 1em;">
+                        <span>Sauerstoffgabe</span>
+                    </label>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+            <!-- Medikamente -->
+            <div id="medikamente" class="section">
+                <div class="subsection">
+                    <h3>Medikamente</h3>
+                    <label>Verabreichte Medikamente:</label>
+                    <textarea placeholder="Medikamente"></textarea>
+                    <label>Dosierung:</label>
+                    <input type="text" placeholder="Dosierung">
+                </div>
+            </div>
+
+           <div id="uebergabe" class="section">
+    <div class="subsection">
+        <h3>Übergabe</h3>
+
+        <div style="display: flex; justify-content: space-between; gap: 20px;">
+
+            <!-- Spalte 1 -->
+            <div style="flex: 1; padding: 10px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start;"> 
+                           
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Zustand_verbessert" style="margin-right: 1em;">
+                        <span>Zustand_verbessert</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Zustand_unverändert" style="margin-right: 1em;">
+                        <span>Zustand_unverändert</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Zustand_verschlechtert" style="margin-right: 1em;">
+                        <span>Zustand_verschlechtert</span></label>
+   	           </label>
+                </div>
+            </div>
+
+            <!-- Spalte 2 -->
+            <div style="flex: 1; padding: 10px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Trsp._nicht_erforderlich" style="margin-right: 1em;">
+                        <span>Trsp._nicht_erforderlich</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Notarzt_nachgefordert" style="margin-right: 1em;">
+                        <span>Notarzt_nachgefordert</span>
+                    </label>
+		    <label>Notarzt nachgefordert um:</label>
+                    <input type="time">
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Notarzt_abbestellt" style="margin-right: 1em;">
+                        <span>Notarzt_abbestellt</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Spalte 3 -->
+            <div style="flex: 1; padding: 10px;">
+                <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Patient_lehnt_Trsp._ab" style="margin-right: 1em;">
+                        <span>Patient_lehnt_Trsp._ab</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Hausarzt_/_ÄBT_informiert" style="margin-right: 1em;">
+                        <span>Hausarzt_/_ÄBT_informiert</span>
+                    </label>
+                    <label style="display: flex; align-items: center; margin-bottom: 15px; text-align: left;">
+                        <input type="checkbox" name="massnahmen" value="Tod_am_Notfallort" style="margin-right: 1em;">
+                        <span>Tod_am_Notfallort</span>
+                    </label>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+
+            <!-- Ergebnis -->
+            <div id="ergebnis" class="section">
+                <div class="subsection">
+                    <h3>Ergebnis</h3>
+                    <label>Ergebnis der Behandlung:</label>
+                    <textarea placeholder="Ergebnis der Behandlung"></textarea>
+                </div>
+            </div>
+
+<div id="abschluss" class="section">
+                <div class="subsection">
+                    <h3>Abschluss</h3>
+                    <textarea id="patientenname" placeholder="Patientenname"></textarea>
+                    <button class="generate-pdf-button" onclick="generatePDF()">Abschlussbericht erstellen</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
